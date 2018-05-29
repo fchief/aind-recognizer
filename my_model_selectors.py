@@ -113,29 +113,20 @@ class SelectorDIC(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-        other_words = []
-        models = []
-        score_dics = []
-        for word in self.words:
-            if word != self.this_word:
-                other_words.append(self.hwords[word])
+        best_dic = float("-inf")
+        best_model = None
         try:
-            for num_states in range(self.min_n_components, self.max_n_components + 1):
-                hmm_model = self.base_model(num_states)
-                log_likelihood_original_word = hmm_model.score(self.X, self.lengths)
-                models.append((log_likelihood_original_word, hmm_model))
-
-        # Note: Situation that may cause exception may be if have more parameters to fit
-        # than there are samples, so must catch exception when the model is invalid
-        except Exception as e:
-            # logging.exception('DIC Exception occurred: ', e)
+            for ns in range(self.min_n_components, self.max_n_components + 1):
+                temp_model = self.base_model(ns)
+                temp_logL = temp_model.score(self.X, self.lengths)
+                temp_meanLogL = np.mean([temp_model.score(word[0], word[1]) for word in self.hwords[word] if word != self.this_word])
+                dic = temp_logL - temp_meanLogL
+                if best_dic < dic:
+                    best_dic = dic
+                    best_model = temp_model
+        except:
             pass
-        for index, model in enumerate(models):
-            log_likelihood_original_word, hmm_model = model
-            score_dic = log_likelihood_original_word - np.mean(self.calc_log_likelihood_other_words(model, other_words))
-            score_dics.append(tuple([score_dic, model[1]]))
-        return self.calc_best_score_dic(score_dics)[1] if score_dics else None
+        return best_model if best_model else None
 
 
 class SelectorCV(ModelSelector):
@@ -160,14 +151,11 @@ class SelectorCV(ModelSelector):
                 X_test, length_test = combine_sequences(cv_test_idx, self.sequences)
                 try:
                     temp_model = self.base_model(ns)
-                    logL_scores.append(temp_model.score(X_test, length_test))
+                    temp_CV = np.mean(temp_model.score(X_test, length_test))
+                    if temp_CV > best_score:
+                        best_score = temp_CV
+                        best_model = temp_model
                 except:
                     pass
-                if np.mean(logL_scores) > best_score:
-                    best_score = np.mean(logL_scores)
-                    best_model = temp_model
 
-        if not best_model:
-            best_model = self.base_model(self.n_constant)
-
-        return best_model
+        return best_model if best_model else None
